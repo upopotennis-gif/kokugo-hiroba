@@ -179,3 +179,10 @@ label.check input { min-height: 0; width: 22px; height: 22px; }
 
 /* まとめの文面 */
 #f-text { min-height: 300px; font-size: 15px; }
+
+/* 複数選択（科目・種類） */
+.lbl { font-size: 14px; color: var(--sub); margin: 12px 0 4px; }
+.multi { display: flex; flex-wrap: wrap; gap: 6px; }
+label.pick { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; margin: 0; padding: 0 14px 0 10px; border: 1px solid var(--line); border-radius: 999px; font-size: 15px; color: var(--ink); cursor: pointer; }
+label.pick input { width: 20px; height: 20px; min-height: 0; margin: 0; }
+label.pick:has(input:checked) { background: var(--ai-soft); border-color: var(--ai); }

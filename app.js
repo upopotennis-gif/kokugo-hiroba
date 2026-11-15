@@ -13,6 +13,8 @@ const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const linkify = (s) => esc(s).replace(/https?:\/\/[^\s<]+/g, (u) => `<a href="${u}" target="_blank" rel="noopener noreferrer">${u}</a>`);
 const school = (s) => (s === 'その他' || !s ? s || '' : s + '高校');
+const subjectsOf = (x) => (Array.isArray(x.subjects) && x.subjects.length ? x.subjects : x.subject ? [x.subject] : []);
+const kindsOf = (x) => (Array.isArray(x.kinds) && x.kinds.length ? x.kinds : x.kind ? [x.kind] : []);
 const who = (x) => `${esc(x.name)}（${esc(school(x.school))}）`;
 const pad = (n) => String(n).padStart(2, '0');
 const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -298,7 +300,7 @@ function eventCard(e, isPast) {
 function resCard(x) {
   return `<article class="card">
     <h3><a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer">${esc(x.title)} ↗</a></h3>
-    <div><span class="tag">${esc(x.subject)}</span><span class="tag">${esc(x.kind)}</span></div>
+    <div>${[...subjectsOf(x), ...kindsOf(x)].map((t) => `<span class="tag">${esc(t)}</span>`).join('')}</div>
     ${x.desc ? `<p class="body">${linkify(x.desc)}</p>` : ''}
     <div class="meta" style="margin-top:6px">${who(x)}　${when(x.createdAt)}</div>${editBtns('resources', x)}
   </article>`;
@@ -371,7 +373,7 @@ function eventView(id) {
 function resourcesView() {
   const f = S.f, q = f.rq.trim().toLowerCase();
   const list = [...S.data.resources].sort((a, b) => b.createdAt - a.createdAt).filter((x) =>
-    (!f.rSchool || x.school === f.rSchool) && (!f.rSubject || x.subject === f.rSubject) && (!f.rKind || x.kind === f.rKind) &&
+    (!f.rSchool || x.school === f.rSchool) && (!f.rSubject || subjectsOf(x).includes(f.rSubject)) && (!f.rKind || kindsOf(x).includes(f.rKind)) &&
     (!q || (x.title + (x.desc || '') + x.name).toLowerCase().includes(q)));
   const sel = (key, label, opts, fmt = (s) => s) => `<select data-keep="${key}" data-f="${key}" aria-label="${label}"><option value="">${label}：すべて</option>${opts.map((o) => `<option value="${o}" ${f[key] === o ? 'selected' : ''}>${fmt(o)}</option>`).join('')}</select>`;
   return `<div class="head"><div><h1>資料棚</h1><p>指導案・教材・考査などのリンクを持ち寄る棚です。</p></div><button class="btn" data-act="new" data-col="resources">資料を登録する</button></div>
@@ -417,7 +419,7 @@ function digestText(days) {
   sec('お知らせ', sortNews().filter(isNew).map((n) => `${n.title}${by(n)}`));
   sec('掲示板の新しい話題', sortPosts().filter(isNew).map((p) => `［${p.cat}］${p.title}${by(p)}${p.replyCount ? ` 返信${p.replyCount}件` : ''}`));
   sec('返信がついた話題', sortPosts().filter((p) => !isNew(p) && p.lastReplyAt >= from).map((p) => `［${p.cat}］${p.title} 返信${p.replyCount || 0}件`));
-  sec('新しい資料', [...S.data.resources].filter(isNew).sort((a, b) => b.createdAt - a.createdAt).map((x) => `${x.title}［${x.subject}／${x.kind}］${by(x)}`));
+  sec('新しい資料', [...S.data.resources].filter(isNew).sort((a, b) => b.createdAt - a.createdAt).map((x) => `${x.title}［${subjectsOf(x).join('・')}／${kindsOf(x).join('・')}］${by(x)}`));
   const quiet = out.length === 1;
   sec('これからの五校の研究会（出欠はひろばで）', upcoming().slice(0, 5).map((e) => { const d = dayParts(e.date); return `${d.m}月${d.d}日（${d.w}）${e.time ? ' ' + e.time : ''} ${e.title}${e.place ? '／' + e.place : ''}`; }));
   const soon = ymd(new Date(now + 14 * 86400000));
@@ -458,8 +460,8 @@ const FORMS = {
   resources: { name: '資料', fields: (x) => [
     { name: 'title', label: '資料の名前', required: true, max: 80, value: x?.title },
     { name: 'url', label: 'リンク（Googleドライブなどの共有リンク）', type: 'url', required: true, max: 500, value: x?.url, placeholder: 'https://', hint: 'リンク先の共有設定（見られる人）も確かめてください。生徒の名前や成績が入った資料は載せません。' },
-    { name: 'subject', label: '科目', type: 'select', options: SUBJECTS, required: true, value: x?.subject },
-    { name: 'kind', label: '種類', type: 'select', options: KINDS, required: true, value: x?.kind },
+    { name: 'subjects', label: '科目（いくつでも）', type: 'multi', options: SUBJECTS, required: true, value: x ? subjectsOf(x) : [] },
+    { name: 'kinds', label: '種類（いくつでも）', type: 'multi', options: KINDS, required: true, value: x ? kindsOf(x) : [] },
     { name: 'desc', label: '説明', type: 'textarea', max: 1000, value: x?.desc },
   ] },
 };
@@ -468,6 +470,7 @@ function openForm({ title, fields, submit = '保存する', extra = '', onSubmit
   const field = (f) => {
     const id = 'f-' + f.name, req = f.required ? 'required' : '', max = f.max ? `maxlength="${f.max}"` : '', ph = f.placeholder ? `placeholder="${esc(f.placeholder)}"` : '';
     const hint = f.hint ? `<div class="hint">${esc(f.hint)}</div>` : '';
+    if (f.type === 'multi') return `<div class="lbl" id="${id}-l">${f.label}</div><div class="multi" role="group" aria-labelledby="${id}-l">${f.options.map((o) => `<label class="pick"><input type="checkbox" name="${f.name}" value="${esc(o)}" ${(f.value || []).includes(o) ? 'checked' : ''}>${esc(o)}</label>`).join('')}</div>${hint}`;
     if (f.type === 'checkbox') return `<label class="check"><input type="checkbox" name="${f.name}" ${f.value ? 'checked' : ''}>${f.label}</label>`;
     if (f.type === 'textarea') return `<label for="${id}">${f.label}</label><textarea id="${id}" name="${f.name}" ${req} ${max} ${ph}>${esc(f.value || '')}</textarea>${hint}`;
     if (f.type === 'select') return `<label for="${id}">${f.label}</label><select id="${id}" name="${f.name}" ${req}><option value="">選んでください</option>${f.options.map((o) => `<option value="${o}" ${f.value === o ? 'selected' : ''}>${f.fmt ? f.fmt(o) : o}</option>`).join('')}</select>${hint}`;
@@ -478,7 +481,9 @@ function openForm({ title, fields, submit = '保存する', extra = '', onSubmit
   dlg.querySelector('form').onsubmit = async (ev) => {
     ev.preventDefault();
     const fd = new FormData(ev.target), v = {};
-    for (const f of fields) v[f.name] = f.type === 'checkbox' ? fd.get(f.name) === 'on' : String(fd.get(f.name) || '').trim();
+    for (const f of fields) v[f.name] = f.type === 'multi' ? fd.getAll(f.name) : f.type === 'checkbox' ? fd.get(f.name) === 'on' : String(fd.get(f.name) || '').trim();
+    const empty = fields.find((f) => f.type === 'multi' && f.required && !v[f.name].length);
+    if (empty) { toast(`「${empty.label.replace(/（.*）/, '')}」を1つ以上選んでください。`); return; }
     const btn = ev.target.querySelector('button:not([type])'); btn.disabled = true;
     try { if ((await onSubmit(v)) !== false) dlg.close(); }
     catch (e) { console.error(e); toast('保存できませんでした。'); }
@@ -492,6 +497,7 @@ function openItem(col, id) {
     title: `${F.name}を${x ? '直す' : (col === 'posts' ? '立てる' : col === 'news' ? '書く' : '登録する')}`,
     fields: F.fields(x),
     onSubmit: async (v) => {
+      if (col === 'resources') { v.subject = v.subjects[0]; v.kind = v.kinds[0]; }
       if (x) await S.store.update(col, id, v);
       else {
         const extra = col === 'posts' ? { replyCount: 0, lastReplyAt: 0 } : col === 'events' ? { record: '' } : {};
