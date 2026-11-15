@@ -142,6 +142,7 @@ const S = {
   ready: { news: false, posts: false, events: false, resources: false },
   detail: { path: null, items: [], stop: null },
   f: { cat: '', q: '', rq: '', rSchool: '', rSubject: '', rKind: '' },
+  gakkai: { state: 'loading', items: [], all: false },
   composing: false, pending: false,
 };
 const author = () => ({ uid: S.uid, name: S.me.name, school: S.me.school });
@@ -181,7 +182,46 @@ async function enter() {
   for (const col of Object.keys(S.data)) {
     S.store.watch(col, (items) => { S.data[col] = items; S.ready[col] = true; render(); }, (e) => { console.error(e); if (e.code === 'permission-denied') location.reload(); });
   }
+  loadGakkai();
   onRoute();
+}
+
+/* ---------- 学会・研究会カレンダー（別サイトで毎日自動更新）を読み込む ---------- */
+const GAKKAI = 'https://upopotennis-gif.github.io/kokugo-kenkyukai-info/';
+async function loadGakkai() {
+  try {
+    const get = (f) => fetch(GAKKAI + f, { cache: 'no-store' }).then((r) => (r.ok ? r.json() : Promise.reject(new Error(f + ' ' + r.status))));
+    const [events, hidden] = await Promise.all([get('events.json'), get('hidden.json').catch(() => [])]);
+    const t = today();
+    S.gakkai.items = events
+      .filter((e) => e && e.name && e.eventDate && !hidden.includes(e.name))
+      .map((e) => { const [start, end] = String(e.eventDate).split('〜'); return { ...e, start, end: end || start }; })
+      .filter((e) => e.end >= t)
+      .sort((a, b) => a.start.localeCompare(b.start));
+    S.gakkai.state = 'ok';
+  } catch (e) { console.error(e); S.gakkai.state = 'ng'; }
+  render();
+}
+function gakkaiCard(e) {
+  const d = dayParts(e.start), d2 = e.end !== e.start ? dayParts(e.end) : null, t = today();
+  const dl = e.deadline ? dayParts(e.deadline) : null;
+  const src = /^https?:\/\//.test(e.source || '') ? e.source : null;   // メールが出どころのものは出さない
+  return `<article class="card ev">
+    <div class="ev-date"><span class="m">${d.m}月</span><span class="d">${d.d}</span><span class="w">${d.w}${d2 ? `〜${d2.d}日` : ''}</span></div>
+    <div><h3>${esc(e.name)}</h3>
+      <div class="meta">${esc(e.time || '時間は未定')}${dl ? `　<span class="tag ${e.deadline < t ? 'shu' : ''}">申込 ${dl.m}/${dl.d}まで${e.deadline < t ? '（過ぎています）' : ''}</span>` : ''}</div>
+      ${e.apply ? `<p class="body">${linkify(e.apply)}</p>` : ''}
+      ${src ? `<a class="src" href="${esc(src)}" target="_blank" rel="noopener noreferrer">もとの案内を開く ↗</a>` : ''}
+    </div></article>`;
+}
+function gakkaiSection() {
+  const g = S.gakkai, n = 5, list = g.all ? g.items : g.items.slice(0, n);
+  const body = g.state === 'loading' ? '<p class="loading">読み込んでいます…</p>'
+    : g.state === 'ng' ? `<p class="empty">いまは読み込めませんでした。<a href="${GAKKAI}" target="_blank" rel="noopener noreferrer">学会・研究会カレンダー</a>で直接ご覧ください。</p>`
+    : !g.items.length ? '<p class="empty">これからの予定はありません。</p>'
+    : list.map(gakkaiCard).join('') + (g.items.length > n ? `<div class="acts"><button class="btn ghost" data-act="gakkai-all">${g.all ? '近い5件だけにする' : `残り${g.items.length - n}件も見る`}</button></div>` : '');
+  return `<section class="sec"><div class="sec-head"><h2>学会・研究会カレンダーから</h2><a href="${GAKKAI}" target="_blank" rel="noopener noreferrer">開く ↗</a></div>
+    <p class="meta" style="margin:0 0 12px">外部の学会・研究会の予定です。毎日自動で集めたものなので、参加の前に必ずもとの案内で日時と申込方法を確かめてください。</p>${body}</section>`;
 }
 
 /* ---------- 画面 ---------- */
@@ -286,8 +326,9 @@ function threadView(id) {
 function eventsView() {
   const up = upcoming(), pa = past();
   return `<div class="head"><div><h1>研究会</h1><p>予定の確認、出欠、終わった会の記録。</p></div><button class="btn" data-act="new" data-col="events">研究会を登録する</button></div>
-    ${loadingOr('events', `<section><div class="sec-head"><h2>これから</h2></div>${up.length ? up.map((e) => eventCard(e)).join('') : '<p class="empty">予定されている研究会はありません。</p>'}</section>
-    <section class="sec"><div class="sec-head"><h2>これまで</h2></div>${pa.length ? pa.map((e) => eventCard(e, true)).join('') : '<p class="empty">まだありません。</p>'}</section>`)}`;
+    ${loadingOr('events', `<section><div class="sec-head"><h2>五校の研究会（これから）</h2></div>${up.length ? up.map((e) => eventCard(e)).join('') : '<p class="empty">予定されている研究会はありません。</p>'}</section>
+    ${gakkaiSection()}
+    <section class="sec"><div class="sec-head"><h2>五校の研究会（これまで）</h2></div>${pa.length ? pa.map((e) => eventCard(e, true)).join('') : '<p class="empty">まだありません。</p>'}</section>`)}`;
 }
 function eventView(id) {
   const e = S.data.events.find((x) => x.id === id);
@@ -411,6 +452,7 @@ const ACT = {
     if (route().id === id) location.hash = col === 'posts' ? '#/board' : '#/' + col;
   },
   cat(el) { S.f.cat = el.dataset.cat; render(); },
+  'gakkai-all'() { S.gakkai.all = !S.gakkai.all; render(); },
   async 'reply-send'(el) {
     const { id } = route(), box = $('#replyBox'), body = box.value.trim();
     if (!body) { box.focus(); return; }
