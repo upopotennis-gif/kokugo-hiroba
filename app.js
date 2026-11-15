@@ -392,10 +392,37 @@ function adminView() {
     return `<div class="row"><b>${g.name ? who(g) : '（名前の記録がまだない端末）'}</b>
       <span class="meta">直近30日で開いた日 <strong>${recent}日</strong>　／　最後に開いた日 ${g.lastSeenAt ? when(g.lastSeenAt) : '記録なし'}</span>
       <span class="meta">登録 ${isFinite(g.joinedAt) ? when(g.joinedAt) : '不明'}　／　これまでに開いた日 ${g.days.size}日　／　端末 ${g.devices}台</span></div>`; };
-  return `<div class="head"><div><h1>登録している人</h1><p>合言葉で入った人の名前と、このページを開いた頻度です（管理者だけが見られます）。</p></div></div>
+  return `<div class="head"><div><h1>登録している人</h1><p>合言葉で入った人の名前と、このページを開いた頻度です（管理者だけが見られます）。</p></div><button class="btn" data-act="digest">まとめを作る</button></div>
     <div class="chips"><span class="tag">合わせて ${named.length}人</span>${bySchool.map(([sc, n]) => `<span class="tag">${esc(school(sc))} ${n}人</span>`).join('')}</div>
     ${list.length ? `<div class="rows">${list.map(row).join('')}</div>` : '<p class="empty">まだ誰も登録していません。</p>'}
     <p class="hint" style="margin-top:14px">名前と学校は本人が入口で入れたものです。同じ名前・学校の端末は1人にまとめています。開いた日は、この機能を入れた日（2026年11月15日）より後の分から数えます。「名前の記録がまだない端末」は、それ以前に入ってからまだ開いていない端末です。</p>`;
+}
+
+/* ---------- まとめ（チャットやメールに貼る文面）を作る ---------- */
+const SITE = 'https://upopotennis-gif.github.io/kokugo-hiroba/';
+function digestText(days) {
+  const now = Date.now(), from = now - days * 86400000, t = today();
+  const md = (ms) => { const d = new Date(ms); return `${d.getMonth() + 1}/${d.getDate()}`; };
+  const by = (x) => `（${x.name}・${school(x.school)}）`;
+  const isNew = (x) => x.createdAt >= from;
+  const out = [`【国語科ひろば】${days === 7 ? 'この1週間' : `この${days}日間`}のまとめ（${md(from)}〜${md(now)}）`];
+  const sec = (title, lines) => { if (lines.length) out.push('', `■ ${title}`, ...lines.map((l) => '・' + l)); };
+  sec('お知らせ', sortNews().filter(isNew).map((n) => `${n.title}${by(n)}`));
+  sec('掲示板の新しい話題', sortPosts().filter(isNew).map((p) => `［${p.cat}］${p.title}${by(p)}${p.replyCount ? ` 返信${p.replyCount}件` : ''}`));
+  sec('返信がついた話題', sortPosts().filter((p) => !isNew(p) && p.lastReplyAt >= from).map((p) => `［${p.cat}］${p.title} 返信${p.replyCount || 0}件`));
+  sec('新しい資料', [...S.data.resources].filter(isNew).sort((a, b) => b.createdAt - a.createdAt).map((x) => `${x.title}［${x.subject}／${x.kind}］${by(x)}`));
+  const quiet = out.length === 1;
+  sec('これからの五校の研究会（出欠はひろばで）', upcoming().slice(0, 5).map((e) => { const d = dayParts(e.date); return `${d.m}月${d.d}日（${d.w}）${e.time ? ' ' + e.time : ''} ${e.title}${e.place ? '／' + e.place : ''}`; }));
+  const soon = ymd(new Date(now + 14 * 86400000));
+  sec('学会・研究会（申込の締切が近いもの）', S.gakkai.items.filter((e) => e.deadline && e.deadline >= t && e.deadline <= soon).sort((a, b) => a.deadline.localeCompare(b.deadline)).slice(0, 5)
+    .map((e) => { const dl = dayParts(e.deadline), d = dayParts(e.start); return `${dl.m}/${dl.d}締切 ${e.name}（${d.m}/${d.d}開催）`; }));
+  if (quiet) out.splice(1, 0, '', 'この期間、新しい書き込みはありませんでした。');
+  out.push('', '▼ 国語科ひろばを開く', SITE);
+  return out.join('\n');
+}
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); return true; }
+  catch { const ta = $('#f-text'); if (!ta) return false; ta.focus(); ta.select(); try { return document.execCommand('copy'); } catch { return false; } }
 }
 
 /* ---------- 入力ダイアログ ---------- */
@@ -491,6 +518,19 @@ const ACT = {
   },
   cat(el) { S.f.cat = el.dataset.cat; render(); },
   'gakkai-all'() { S.gakkai.all = !S.gakkai.all; render(); },
+  digest() {
+    openForm({
+      title: 'まとめを作る', submit: 'コピーする',
+      fields: [{ name: 'text', label: '各校のチャットやメールに貼る文面（ここで書き足したり削ったりできます）', type: 'textarea', value: digestText(7) }],
+      extra: `<div class="chips" style="margin:12px 0 0">${[7, 14, 30].map((d) => `<button type="button" class="chip ${d === 7 ? 'on' : ''}" data-act="digest-days" data-d="${d}">${d === 7 ? 'この1週間' : `この${d}日間`}</button>`).join('')}</div>
+        <div class="hint">期間を変えると文面を作り直します（書き足した分は消えます）。合言葉は文面に入りません。</div>`,
+      onSubmit: async (v) => { toast((await copyText(v.text)) ? 'コピーしました。チャットやメールに貼ってください。' : 'コピーできませんでした。文面を選んでコピーしてください。'); return false; },
+    });
+  },
+  'digest-days'(el) {
+    $('#f-text').value = digestText(Number(el.dataset.d));
+    el.parentElement.querySelectorAll('.chip').forEach((c) => c.classList.toggle('on', c === el));
+  },
   async 'reply-send'(el) {
     const { id } = route(), box = $('#replyBox'), body = box.value.trim();
     if (!body) { box.focus(); return; }

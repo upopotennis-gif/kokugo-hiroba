@@ -176,3 +176,6 @@ label.check input { min-height: 0; width: 22px; height: 22px; }
 .src { display: inline-flex; align-items: center; min-height: 44px; font-size: 14px; }
 .ev > div:last-child { min-width: 0; }
 .card h3 a { display: inline-block; min-height: 44px; }
+
+/* まとめの文面 */
+#f-text { min-height: 300px; font-size: 15px; }
