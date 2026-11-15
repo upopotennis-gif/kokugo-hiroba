@@ -175,7 +175,6 @@ function gateView(err = '') {
       <option value="">選んでください</option>
       ${SCHOOLS.map((s) => `<option ${S.me.school === s ? 'selected' : ''} value="${s}">${school(s)}</option>`).join('')}
     </select>
-    <div class="hint">お名前・学校と、このページを開いた日は、管理者が確認できます。</div>
     <div class="err" id="gateErr">${esc(err)}</div>
     <button class="btn">入る</button>
   </form>`;
