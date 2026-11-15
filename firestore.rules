@@ -1,0 +1,101 @@
+rules_version = '2';
+
+// 国語科ひろば の安全ルール
+// ・合言葉（config/access の memberCode）を正しく入れた人だけが読み書きできる
+// ・合言葉を変えると、全員がもう一度入り直しになる
+// ・自分の書き込みは自分で直す・消す。管理者（adminCode を入れた人）は誰のものでも消せる
+service cloud.firestore {
+  match /databases/{db}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function access() { return get(/databases/$(db)/documents/config/access).data; }
+    function isMember() {
+      return signedIn()
+        && exists(/databases/$(db)/documents/members/$(request.auth.uid))
+        && get(/databases/$(db)/documents/members/$(request.auth.uid)).data.code == access().memberCode;
+    }
+    function isAdmin() {
+      return signedIn()
+        && exists(/databases/$(db)/documents/admins/$(request.auth.uid))
+        && get(/databases/$(db)/documents/admins/$(request.auth.uid)).data.code == access().adminCode;
+    }
+    function own() { return resource.data.uid == request.auth.uid; }
+    // 新しく書くとき：自分の名前で、名前と学校が入っていること
+    function validNew() {
+      return request.resource.data.uid == request.auth.uid
+        && request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 20
+        && request.resource.data.school is string && request.resource.data.school.size() <= 20;
+    }
+    // 直すとき：書いた人の欄は変えない
+    function keepsAuthor() {
+      return request.resource.data.uid == resource.data.uid
+        && request.resource.data.name == resource.data.name
+        && request.resource.data.school == resource.data.school;
+    }
+    function onlyChanges(keys) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
+    }
+
+    // 合言葉そのもの：サイトからは読めない・書けない（Firebase の管理画面でだけ直す）
+    match /config/{doc} { allow read, write: if false; }
+
+    match /members/{uid} {
+      allow get, delete: if signedIn() && request.auth.uid == uid;
+      allow create, update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.code == access().memberCode;
+    }
+    match /admins/{uid} {
+      allow get, delete: if signedIn() && request.auth.uid == uid;
+      allow create, update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.code == access().adminCode;
+    }
+
+    match /news/{id} {
+      allow read: if isMember();
+      allow create: if isMember() && validNew();
+      allow update: if isMember() && keepsAuthor() && (own() || isAdmin());
+      allow delete: if isMember() && (own() || isAdmin());
+    }
+
+    match /posts/{id} {
+      allow read: if isMember();
+      allow create: if isMember() && validNew();
+      // 返信がついたときの件数の更新は誰でも。本文を直せるのは本人か管理者
+      allow update: if isMember() && (
+        onlyChanges(['replyCount', 'lastReplyAt'])
+        || (keepsAuthor() && (own() || isAdmin())));
+      allow delete: if isMember() && (own() || isAdmin());
+
+      match /replies/{rid} {
+        allow read: if isMember();
+        allow create: if isMember() && validNew();
+        allow delete: if isMember() && (own() || isAdmin());
+      }
+    }
+
+    match /events/{id} {
+      allow read: if isMember();
+      allow create: if isMember() && validNew();
+      // 記録は参加した人なら誰でも書ける。日時などを直せるのは登録した人か管理者
+      allow update: if isMember() && (
+        onlyChanges(['record'])
+        || (keepsAuthor() && (own() || isAdmin())));
+      allow delete: if isMember() && (own() || isAdmin());
+
+      match /attendance/{uid} {
+        allow read: if isMember();
+        allow create, update: if isMember() && request.auth.uid == uid && validNew();
+        allow delete: if isMember() && (request.auth.uid == uid || isAdmin());
+      }
+    }
+
+    match /resources/{id} {
+      allow read: if isMember();
+      allow create: if isMember() && validNew()
+        && request.resource.data.url is string && request.resource.data.url.matches('https?://.+');
+      allow update: if isMember() && keepsAuthor() && (own() || isAdmin())
+        && request.resource.data.url is string && request.resource.data.url.matches('https?://.+');
+      allow delete: if isMember() && (own() || isAdmin());
+    }
+  }
+}
