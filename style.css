@@ -168,3 +168,6 @@ dialog .acts { justify-content: flex-end; margin-top: 18px; }
 label.check { min-height: 44px; }
 label.check input { min-height: 0; width: 22px; height: 22px; }
 .sec-head { align-items: center; }
+
+/* hidden を付けたものは必ず隠す（入口ではタブと名前ボタンを出さない） */
+[hidden] { display: none !important; }
