@@ -15,7 +15,8 @@ const linkify = (s) => esc(s).replace(/https?:\/\/[^\s<]+/g, (u) => `<a href="${
 const school = (s) => (s === 'その他' || !s ? s || '' : s + '高校');
 const who = (x) => `${esc(x.name)}（${esc(school(x.school))}）`;
 const pad = (n) => String(n).padStart(2, '0');
-const today = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
+const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const today = () => ymd(new Date());
 function when(ms) {
   if (!ms) return '';
   const d = new Date(ms), y = d.getFullYear() === new Date().getFullYear() ? '' : d.getFullYear() + '年';
@@ -56,6 +57,12 @@ function demoStore() {
     async joinAdmin(code) { if (code !== 'かんり') return false; adminFlag = true; lsSet(KEY + '-admin', '1'); return true; },
     async isAdmin() { return adminFlag; },
     async leave() { inFlag = adminFlag = false; lsDel(KEY + '-in'); lsDel(KEY + '-admin'); },
+    async touch(info) {
+      const list = (db.members ||= []); let m = list.find((x) => x.id === uid);
+      if (!m) { m = { id: uid, joinedAt: info.now, days: [] }; list.push(m); }
+      Object.assign(m, { name: info.name, school: info.school, lastSeenAt: info.now, days: [...new Set([...(m.days || []), info.day])].sort().slice(-120) });
+      save(); emit('members');
+    },
     watch(path, cb) {
       if (!ls.has(path)) ls.set(path, []);
       ls.get(path).push(cb);
@@ -120,6 +127,11 @@ async function firebaseStore(cfg) {
     async isAdmin() {
       try { return (await F.getDoc(F.doc(db, 'admins', uid))).exists(); } catch { return false; }
     },
+    async touch(info) {
+      const ref = F.doc(db, 'members', uid), cur = (await F.getDoc(ref)).data() || {};
+      const days = [...new Set([...(cur.days || []), info.day])].sort().slice(-120);
+      await F.updateDoc(ref, { name: info.name, school: info.school, lastSeenAt: info.now, days });
+    },
     async leave() {
       await Promise.allSettled([F.deleteDoc(F.doc(db, 'admins', uid)), F.deleteDoc(F.doc(db, 'members', uid))]);
     },
@@ -163,6 +175,7 @@ function gateView(err = '') {
       <option value="">選んでください</option>
       ${SCHOOLS.map((s) => `<option ${S.me.school === s ? 'selected' : ''} value="${s}">${school(s)}</option>`).join('')}
     </select>
+    <div class="hint">お名前・学校と、このページを開いた日は、管理者が確認できます。</div>
     <div class="err" id="gateErr">${esc(err)}</div>
     <button class="btn">入る</button>
   </form>`;
@@ -183,7 +196,12 @@ async function enter() {
     S.store.watch(col, (items) => { S.data[col] = items; S.ready[col] = true; render(); }, (e) => { console.error(e); if (e.code === 'permission-denied') location.reload(); });
   }
   loadGakkai();
+  touch();
   onRoute();
+}
+// 開いた記録（名前・学校・開いた日）を自分の登録に残す。管理者の一覧で使う
+function touch() {
+  S.store.touch({ name: S.me.name, school: S.me.school, now: Date.now(), day: today() }).catch((e) => console.error(e));
 }
 
 /* ---------- 学会・研究会カレンダー（別サイトで毎日自動更新）を読み込む ---------- */
@@ -240,7 +258,7 @@ function render() {
     keep[el.dataset.keep] = el.value;
     if (el === document.activeElement) { focus = el.dataset.keep; try { sel = [el.selectionStart, el.selectionEnd]; } catch { sel = null; } }
   });
-  const view = { home: homeView, news: newsView, board: r.id ? threadView : boardView, events: r.id ? eventView : eventsView, resources: resourcesView }[r.page] || homeView;
+  const view = { home: homeView, news: newsView, board: r.id ? threadView : boardView, events: r.id ? eventView : eventsView, resources: resourcesView, admin: adminView }[r.page] || homeView;
   main.innerHTML = view(r.id);
   main.querySelectorAll('[data-keep]').forEach((el) => {
     if (el.dataset.keep in keep) el.value = keep[el.dataset.keep];
@@ -360,6 +378,27 @@ function resourcesView() {
     ${loadingOr('resources', list.length ? list.map(resCard).join('') : '<p class="empty">当てはまる資料はありません。</p>')}`;
 }
 
+function adminView() {
+  if (!S.admin) return '<p class="empty">このページは、管理者として入ると見られます（右上の名前 →「管理者として入る」）。</p>';
+  const from = ymd(new Date(Date.now() - 29 * 86400000)), people = new Map();
+  for (const m of S.detail.items) {
+    const key = m.name ? m.name + '\u0000' + m.school : m.id;       // 同じ人のスマホとパソコンは1人にまとめる
+    const g = people.get(key) || { name: m.name, school: m.school, joinedAt: Infinity, lastSeenAt: 0, days: new Set(), devices: 0 };
+    g.devices++; g.joinedAt = Math.min(g.joinedAt, m.joinedAt || Infinity); g.lastSeenAt = Math.max(g.lastSeenAt, m.lastSeenAt || 0);
+    (m.days || []).forEach((d) => g.days.add(d)); people.set(key, g);
+  }
+  const list = [...people.values()].sort((a, b) => b.lastSeenAt - a.lastSeenAt), named = list.filter((g) => g.name);
+  const bySchool = SCHOOLS.map((sc) => [sc, named.filter((g) => g.school === sc).length]).filter(([, n]) => n);
+  const row = (g) => { const recent = [...g.days].filter((d) => d >= from).length;
+    return `<div class="row"><b>${g.name ? who(g) : '（名前の記録がまだない端末）'}</b>
+      <span class="meta">直近30日で開いた日 <strong>${recent}日</strong>　／　最後に開いた日 ${g.lastSeenAt ? when(g.lastSeenAt) : '記録なし'}</span>
+      <span class="meta">登録 ${isFinite(g.joinedAt) ? when(g.joinedAt) : '不明'}　／　これまでに開いた日 ${g.days.size}日　／　端末 ${g.devices}台</span></div>`; };
+  return `<div class="head"><div><h1>登録している人</h1><p>合言葉で入った人の名前と、このページを開いた頻度です（管理者だけが見られます）。</p></div></div>
+    <div class="chips"><span class="tag">合わせて ${named.length}人</span>${bySchool.map(([sc, n]) => `<span class="tag">${esc(school(sc))} ${n}人</span>`).join('')}</div>
+    ${list.length ? `<div class="rows">${list.map(row).join('')}</div>` : '<p class="empty">まだ誰も登録していません。</p>'}
+    <p class="hint" style="margin-top:14px">名前と学校は本人が入口で入れたものです。同じ名前・学校の端末は1人にまとめています。開いた日は、この機能を入れた日（2026年11月15日）より後の分から数えます。「名前の記録がまだない端末」は、それ以前に入ってからまだ開いていない端末です。</p>`;
+}
+
 /* ---------- 入力ダイアログ ---------- */
 const FORMS = {
   news: { name: 'お知らせ', fields: (x) => [
@@ -433,9 +472,9 @@ function openProfile() {
       { name: 'name', label: 'お名前', required: true, max: 20, value: S.me.name },
       { name: 'school', label: '学校', type: 'select', options: SCHOOLS, fmt: school, required: true, value: S.me.school },
     ],
-    extra: `<div class="acts" style="margin-top:18px">${S.admin ? '' : '<button type="button" class="btn ghost small" data-act="admin">管理者として入る</button>'}<button type="button" class="btn danger small" data-act="leave">このページから出る</button></div>
+    extra: `<div class="acts" style="margin-top:18px">${S.admin ? '<a class="btn ghost small" href="#/admin" data-act="dlg-close">登録している人を見る</a>' : '<button type="button" class="btn ghost small" data-act="admin">管理者として入る</button>'}<button type="button" class="btn danger small" data-act="leave">このページから出る</button></div>
       <div class="hint">名前を変えても、これまでの書き込みの名前はそのままです。</div>`,
-    onSubmit: async (v) => { S.me = v; lsSet('kokugo-hiroba-me', JSON.stringify(v)); render(); },
+    onSubmit: async (v) => { S.me = v; lsSet('kokugo-hiroba-me', JSON.stringify(v)); touch(); render(); },
   });
 }
 
@@ -488,7 +527,7 @@ const ACT = {
       fields: [{ name: 'code', label: '管理者用の合言葉', type: 'password', required: true }],
       onSubmit: async (v) => {
         if (!(await S.store.joinAdmin(v.code))) { toast('合言葉が違うようです。'); return false; }
-        S.admin = true; render(); toast('管理者として入りました。');
+        S.admin = true; onRoute(); toast('管理者として入りました。');
       },
     });
   },
@@ -511,7 +550,7 @@ document.addEventListener('compositionend', () => { S.composing = false; if (S.p
 function onRoute() {
   if (!S.joined) { render(); return; }
   const r = route();
-  const path = r.id && r.page === 'board' ? `posts/${r.id}/replies` : r.id && r.page === 'events' ? `events/${r.id}/attendance` : null;
+  const path = r.id && r.page === 'board' ? `posts/${r.id}/replies` : r.id && r.page === 'events' ? `events/${r.id}/attendance` : r.page === 'admin' && S.admin ? 'members' : null;
   if (path !== S.detail.path) {
     if (S.detail.stop) S.detail.stop();
     S.detail = { path, items: [], stop: null };

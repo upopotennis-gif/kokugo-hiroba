@@ -40,7 +40,10 @@ service cloud.firestore {
     match /config/{doc} { allow read, write: if false; }
 
     match /members/{uid} {
-      allow get, delete: if signedIn() && request.auth.uid == uid;
+      // 自分の登録は自分で読める。管理者は全員ぶん（名前・学校・開いた日）を読める
+      allow get: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow list: if isAdmin();
+      allow delete: if signedIn() && request.auth.uid == uid;
       allow create, update: if signedIn() && request.auth.uid == uid
         && request.resource.data.code == access().memberCode;
     }
