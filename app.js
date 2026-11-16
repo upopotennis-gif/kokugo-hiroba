@@ -155,7 +155,7 @@ const S = {
   data: { news: [], posts: [], events: [], resources: [] },
   ready: { news: false, posts: false, events: false, resources: false },
   detail: { path: null, items: [], stop: null },
-  f: { cat: '', q: '', rq: '', rSchool: '', rSubject: '', rKind: '' },
+  f: { cat: '', q: '', rq: '', rSchool: '', rSubject: '', rKind: '', rOpen: '' },
   gakkai: { state: 'loading', items: [], all: false },
   composing: false, pending: false,
 };
@@ -370,16 +370,26 @@ function eventView(id) {
       <div class="acts"><button class="btn ghost" data-act="record" data-id="${e.id}">${e.record ? '記録を直す' : '記録を書く'}</button></div>
     </section>`;
 }
+// 本棚の背表紙。色は種類（1つめ）、高さは資料ごとに少しずつ変える
+function spine(x) {
+  const k = Math.max(0, KINDS.indexOf(kindsOf(x)[0])), on = S.f.rOpen === x.id;
+  const h = 176 + ([...String(x.id)].reduce((a, c) => a + c.charCodeAt(0), 0) % 4) * 8;
+  return `<button class="spine k${k} ${on ? 'on' : ''}" style="--h:${h}px" data-act="book" data-id="${x.id}" aria-expanded="${on}"><span>${esc(x.title)}</span></button>`;
+}
 function resourcesView() {
   const f = S.f, q = f.rq.trim().toLowerCase();
   const list = [...S.data.resources].sort((a, b) => b.createdAt - a.createdAt).filter((x) =>
     (!f.rSchool || x.school === f.rSchool) && (!f.rSubject || subjectsOf(x).includes(f.rSubject)) && (!f.rKind || kindsOf(x).includes(f.rKind)) &&
     (!q || (x.title + (x.desc || '') + x.name).toLowerCase().includes(q)));
   const sel = (key, label, opts, fmt = (s) => s) => `<select data-keep="${key}" data-f="${key}" aria-label="${label}"><option value="">${label}：すべて</option>${opts.map((o) => `<option value="${o}" ${f[key] === o ? 'selected' : ''}>${fmt(o)}</option>`).join('')}</select>`;
-  return `<div class="head"><div><h1>資料棚</h1><p>指導案・教材・考査などのリンクを持ち寄る棚です。</p></div><button class="btn" data-act="new" data-col="resources">資料を登録する</button></div>
+  const open = list.find((x) => x.id === f.rOpen);
+  const shelves = SUBJECTS.map((sub) => [sub, list.filter((x) => (subjectsOf(x)[0] || 'その他') === sub)]).filter(([, xs]) => xs.length);
+  const shelfHtml = `<div class="books">${shelves.map(([sub, xs]) => `<span class="divider" role="heading" aria-level="2"><span>${esc(sub)}</span></span>${xs.map(spine).join('')}`).join('')}</div>
+    ${open ? `<div class="book-open" id="bookOpen">${resCard(open)}</div>` : ''}`;
+  return `<div class="head"><div><h1>資料棚</h1><p>指導案・教材・考査などのリンクを持ち寄る棚です。背表紙を押すと、説明とリンクが開きます。</p></div><button class="btn" data-act="new" data-col="resources">資料を登録する</button></div>
     <div class="tools">${sel('rSchool', '学校', SCHOOLS, school)}${sel('rSubject', '科目', SUBJECTS)}${sel('rKind', '種類', KINDS)}
       <input type="search" placeholder="ことばで探す" data-keep="rq" data-f="rq" value="${esc(f.rq)}" aria-label="資料をことばで探す"></div>
-    ${loadingOr('resources', list.length ? list.map(resCard).join('') : '<p class="empty">当てはまる資料はありません。</p>')}`;
+    ${loadingOr('resources', list.length ? `${shelfHtml}<p class="legend" aria-label="背表紙の色">${KINDS.map((k, i) => `<span><i class="k${i}"></i>${esc(k)}</span>`).join('')}</p>` : '<p class="empty">当てはまる資料はありません。</p>')}`;
 }
 
 let adminMails = [];
@@ -535,6 +545,10 @@ const ACT = {
     if (route().id === id) location.hash = col === 'posts' ? '#/board' : '#/' + col;
   },
   cat(el) { S.f.cat = el.dataset.cat; render(); },
+  book(el) {
+    S.f.rOpen = S.f.rOpen === el.dataset.id ? '' : el.dataset.id; render();
+    const o = document.getElementById('bookOpen'); if (o) o.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  },
   'gakkai-all'() { S.gakkai.all = !S.gakkai.all; render(); },
   digest() {
     openForm({

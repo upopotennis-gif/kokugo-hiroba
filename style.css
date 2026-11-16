@@ -186,3 +186,33 @@ label.check input { min-height: 0; width: 22px; height: 22px; }
 label.pick { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; margin: 0; padding: 0 14px 0 10px; border: 1px solid var(--line); border-radius: 999px; font-size: 15px; color: var(--ink); cursor: pointer; }
 label.pick input { width: 20px; height: 20px; min-height: 0; margin: 0; }
 label.pick:has(input:checked) { background: var(--ai-soft); border-color: var(--ai); }
+
+/* 資料棚：本棚 */
+.divider {
+  writing-mode: vertical-rl; height: 200px; width: 34px; display: flex; align-items: center; justify-content: flex-start;
+  padding: 10px 0; font-family: var(--gothic); font-size: 14px; color: #4a3a22; letter-spacing: .08em;
+  background: #d9c6a3; border-radius: 3px 3px 0 0; box-shadow: inset -2px 0 0 rgba(0,0,0,.12); white-space: nowrap; overflow: hidden;
+}
+.books {
+  display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 5px; padding: 0 10px 12px;
+  background: repeating-linear-gradient(to bottom, transparent 0 200px, #9a7b52 200px 208px, #6f5636 208px 212px);
+  border-left: 6px solid #9a7b52; border-right: 6px solid #9a7b52; border-radius: 3px;
+}
+.spine {
+  font: inherit; font-family: var(--mincho); font-size: 15px; font-weight: 600; line-height: 1.35; letter-spacing: .04em;
+  writing-mode: vertical-rl; text-orientation: mixed; text-align: start;
+  height: var(--h, 200px); min-width: 44px; max-width: 92px; padding: 12px 8px; margin: 0; cursor: pointer; overflow: hidden;
+  color: #fff; border: 0; border-top: 6px solid rgba(255,255,255,.28); border-radius: 3px 3px 0 0;
+  box-shadow: inset -3px 0 0 rgba(0,0,0,.14); transition: transform .15s;
+}
+.books .spine { margin-top: calc(200px - var(--h, 200px)); }
+.spine.on { transform: translateY(-10px); outline: 2px solid var(--ink); outline-offset: 1px; }
+.spine:focus-visible { outline: 2px solid var(--ai); outline-offset: 2px; }
+.k0 { background: #264a6e; } .k1 { background: #3d6b4a; } .k2 { background: #8a5a2b; }
+.k3 { background: #a23f2b; } .k4 { background: #5b4a7a; } .k5 { background: #5f5e5a; }
+.book-open { margin-top: 12px; }
+.book-open .card { border-left: 4px solid var(--ai); }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 14px; color: var(--sub); margin: 4px 0 0; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 14px; height: 14px; border-radius: 2px; display: inline-block; }
+@media (prefers-reduced-motion: reduce) { .spine { transition: none; } }
