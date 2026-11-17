@@ -210,6 +210,7 @@ label.pick:has(input:checked) { background: var(--ai-soft); border-color: var(--
 .spine:focus-visible { outline: 2px solid var(--ai); outline-offset: 2px; }
 .k0 { background: #264a6e; } .k1 { background: #3d6b4a; } .k2 { background: #8a5a2b; }
 .k3 { background: #a23f2b; } .k4 { background: #5b4a7a; } .k5 { background: #5f5e5a; }
+.grp { display: flex; align-items: flex-end; gap: 5px; }
 .book-open { margin-top: 12px; }
 .book-open .card { border-left: 4px solid var(--ai); }
 .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 14px; color: var(--sub); margin: 4px 0 0; }

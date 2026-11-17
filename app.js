@@ -384,7 +384,7 @@ function resourcesView() {
   const sel = (key, label, opts, fmt = (s) => s) => `<select data-keep="${key}" data-f="${key}" aria-label="${label}"><option value="">${label}：すべて</option>${opts.map((o) => `<option value="${o}" ${f[key] === o ? 'selected' : ''}>${fmt(o)}</option>`).join('')}</select>`;
   const open = list.find((x) => x.id === f.rOpen);
   const shelves = SUBJECTS.map((sub) => [sub, list.filter((x) => (subjectsOf(x)[0] || 'その他') === sub)]).filter(([, xs]) => xs.length);
-  const shelfHtml = `<div class="books">${shelves.map(([sub, xs]) => `<span class="divider" role="heading" aria-level="2"><span>${esc(sub)}</span></span>${xs.map(spine).join('')}`).join('')}</div>
+  const shelfHtml = `<div class="books">${shelves.map(([sub, xs]) => `<span class="grp"><span class="divider" role="heading" aria-level="2"><span>${esc(sub)}</span></span>${spine(xs[0])}</span>${xs.slice(1).map(spine).join('')}`).join('')}</div>
     ${open ? `<div class="book-open" id="bookOpen">${resCard(open)}</div>` : ''}`;
   return `<div class="head"><div><h1>資料棚</h1><p>指導案・教材・考査などのリンクを持ち寄る棚です。背表紙を押すと、説明とリンクが開きます。</p></div><button class="btn" data-act="new" data-col="resources">資料を登録する</button></div>
     <div class="tools">${sel('rSchool', '学校', SCHOOLS, school)}${sel('rSubject', '科目', SUBJECTS)}${sel('rKind', '種類', KINDS)}
