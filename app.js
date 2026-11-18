@@ -320,7 +320,7 @@ function homeView() {
   const sec = (title, href, col, list, html) => `<section class="sec"><div class="sec-head"><h2>${title}</h2><a href="${href}">すべて見る</a></div>
     ${loadingOr(col, list.length ? html : '<p class="empty">まだありません。</p>')}</section>`;
   return `<div class="head"><div><h1>${esc(S.me.name)}先生、こんにちは</h1><p>五校の国語科の「いま」をここに集めます。</p></div></div>
-    ${sec('お知らせ', '#/news', 'news', news, news.map(newsCard).join(''))}
+    ${sec('お知らせ', '#/news', 'news', news, news.map((n) => newsCard(n, true)).join(''))}
     ${sec('これからの研究会', '#/events', 'events', ev, ev.map((e) => eventCard(e)).join(''))}
     ${sec('掲示板の新しい話題', '#/board', 'posts', posts, `<div class="rows">${posts.map(postRow).join('')}</div>`)}
     ${sec('新しく入った資料', '#/resources', 'resources', res, res.map(resCard).join(''))}`;
