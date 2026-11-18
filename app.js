@@ -152,6 +152,7 @@ async function firebaseStore(cfg) {
 const S = {
   store: null, uid: null, admin: false, joined: false,
   me: (() => { try { return JSON.parse(lsGet('kokugo-hiroba-me')) || {}; } catch { return {}; } })(),
+  nOpen: new Set(),
   data: { news: [], posts: [], events: [], resources: [] },
   ready: { news: false, posts: false, events: false, resources: false },
   detail: { path: null, items: [], stop: null },
@@ -277,11 +278,18 @@ const sortPosts = () => [...S.data.posts].sort((a, b) => (b.lastReplyAt || b.cre
 const upcoming = () => S.data.events.filter((e) => e.date >= today()).sort((a, b) => a.date.localeCompare(b.date));
 const past = () => S.data.events.filter((e) => e.date < today()).sort((a, b) => b.date.localeCompare(a.date));
 
-function newsCard(n) {
-  return `<article class="card ${n.pinned ? 'pin' : ''}">
-    <h3>${n.pinned ? '<span class="tag shu">固定</span>' : ''}${esc(n.title)}</h3>
+function newsCard(n, fold) {
+  const tag = n.pinned ? '<span class="tag shu">固定</span>' : '';
+  if (!fold) return `<article class="card ${n.pinned ? 'pin' : ''}">
+    <h3>${tag}${esc(n.title)}</h3>
     <div class="meta">${who(n)}　${when(n.createdAt)}</div>
     <p class="body">${linkify(n.body)}</p>${editBtns('news', n)}
+  </article>`;
+  const on = S.nOpen.has(n.id);
+  return `<article class="card fold ${n.pinned ? 'pin' : ''} ${on ? 'on' : ''}">
+    <h3><button class="fold-h" data-act="fold" data-id="${n.id}" aria-expanded="${on}"><span class="fold-t">${tag}${esc(n.title)}</span><span class="fold-c" aria-hidden="true"></span></button></h3>
+    <div class="meta">${who(n)}　${when(n.createdAt)}</div>
+    ${on ? `<p class="body">${linkify(n.body)}</p>${editBtns('news', n)}` : ''}
   </article>`;
 }
 function postRow(p) {
@@ -319,8 +327,8 @@ function homeView() {
 }
 function newsView() {
   const list = sortNews();
-  return `<div class="head"><div><h1>お知らせ</h1><p>各校・研究会からの連絡です。</p></div><button class="btn" data-act="new" data-col="news">お知らせを書く</button></div>
-    ${loadingOr('news', list.length ? list.map(newsCard).join('') : '<p class="empty">お知らせはまだありません。</p>')}`;
+  return `<div class="head"><div><h1>お知らせ</h1><p>各校・研究会からの連絡です。題を押すと、本文が開きます。</p></div><button class="btn" data-act="new" data-col="news">お知らせを書く</button></div>
+    ${loadingOr('news', list.length ? list.map((n) => newsCard(n, true)).join('') : '<p class="empty">お知らせはまだありません。</p>')}`;
 }
 function boardView() {
   const q = S.f.q.trim().toLowerCase();
@@ -545,6 +553,7 @@ const ACT = {
     if (route().id === id) location.hash = col === 'posts' ? '#/board' : '#/' + col;
   },
   cat(el) { S.f.cat = el.dataset.cat; render(); },
+  fold(el) { const id = el.dataset.id; if (S.nOpen.has(id)) S.nOpen.delete(id); else S.nOpen.add(id); render(); },
   book(el) {
     S.f.rOpen = S.f.rOpen === el.dataset.id ? '' : el.dataset.id; render();
     const o = document.getElementById('bookOpen'); if (o) o.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
